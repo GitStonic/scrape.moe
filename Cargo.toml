@@ -1,0 +1,11 @@
+[package]
+name = "scrape-moe"
+version = "0.1.0"
+authors = ["GitStonic <kingstonicthe1@gmail.com>"]
+
+[dependencies]
+serde        = "1.0.75"
+select       = "0.4.2"
+reqwest      = "0.8.8"
+serde_json   = "1.0.26"
+serde_derive = "1.0.75"
