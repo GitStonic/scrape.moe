@@ -1,12 +1,15 @@
 #[macro_use] extern crate serde_derive;
 
 extern crate serde;
+extern crate regex;
 extern crate select;
 extern crate reqwest;
 extern crate serde_json;
 
+use regex::Regex;
+
 use select::document::Document;
-use select::predicate::{Predicate, Attr, Class, Name};
+use select::predicate::{Name, Predicate};
 
 use std::net::{TcpListener, TcpStream};
 use std::io::{stdin, Read, Write};
@@ -34,12 +37,35 @@ fn grab_body(url: String) -> String {
     body
 }
 
-fn parse_to(document: String, _to: String) {
+fn parse_to(document: String, url: String) -> Result<(), &'static str> {
+    let mut page_links: Vec<String> = Vec::new();
+    let mut page_images: Vec<String> = Vec::new();
     let new_document = Document::from(document.as_str());
 
-    for node in new_document.find(Name("body")) {
-        // Grab images and links from body document...
+    for node in new_document.find(Name("a")) {
+        let mut page_link = node.attr("href").unwrap_or("Cannot grab a link...");
+
+        println!("Page Link:\n{}", page_link);
+        if (page_link.starts_with("http://") != true) && (page_link.starts_with("https://") != true) {
+            // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
+            // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
+            // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
+
+            // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
+        } else {
+            println!("This link is good...")
+        }
+
+        page_links.push(String::from(page_link));
     }
+
+    let data = AppendData {
+        new_images: page_images,
+        new_links: page_links
+    };
+
+    write_to_file(data);
+    Ok(println!("PARSE: Pass..."))
 }
 
 fn grab_file() -> serde_json::Result<EndFile> {
@@ -81,7 +107,8 @@ fn main() {
 
     println!("Grabbing data...");
 
-    let html_body = grab_body(url);
+    let html_body = grab_body(url.clone());
 
-    parse_to(html_body, String::from("Something"));
+    parse_to(html_body, url.clone())
+        .unwrap();
 }
