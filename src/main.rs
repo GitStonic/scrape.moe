@@ -13,7 +13,7 @@ use select::predicate::{Name, Predicate};
 
 use std::net::{TcpListener, TcpStream};
 use std::io::{stdin, Read, Write};
-use std::fs::{File};
+use std::fs::{File, OpenOptions};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EndFile {
@@ -43,18 +43,40 @@ fn parse_to(document: String, url: String) -> Result<(), &'static str> {
     let new_document = Document::from(document.as_str());
 
     for node in new_document.find(Name("a")) {
-        let mut page_link = node.attr("href").unwrap_or("Cannot grab a link...");
+        let mut page_link = String::new();
+        let mut link = node.attr("href").unwrap_or("Cannot grab a link...");
 
-        println!("Page Link:\n{}", page_link);
-        if (page_link.starts_with("http://") != true) && (page_link.starts_with("https://") != true) {
+        if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
             // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
             // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
             // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
 
             // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
+            println!("Neither http or https");
+
+            let mut domain_name = String::new();
+            let potential_name = Regex::new(r"//(?:[^./]+[.])*([^/.]+[.][^/.]+)/?").unwrap();
+
+            match potential_name.captures(url.as_str()) {
+                Some(domain) => {
+                    let temp = domain.get(0).unwrap();
+
+                    let text = temp.as_str();
+
+                    domain_name.push_str(text.replace("/", "").as_str());
+                },
+                None => println!("No matches we're available")
+            }
+
+            let new_link = format!("https://{}/{}", domain_name, link);
+
+            page_link.push_str(new_link.as_str());
         } else {
-            println!("This link is good...")
+            println!("This link is good...");
+            page_link.push_str(link)
         }
+
+        println!("End result {}", page_link);
 
         page_links.push(String::from(page_link));
     }
@@ -94,7 +116,12 @@ fn write_to_file(data: AppendData) {
     let new_file = serde_json::to_string(&file)
         .unwrap();
 
-    println!("{}", new_file);
+    let mut f = OpenOptions::new()
+        .write(true)
+        .open("temp/data.json")
+        .unwrap();
+    
+    f.write_all(new_file.as_bytes()).unwrap();
 }
 
 fn main() {
@@ -109,6 +136,5 @@ fn main() {
 
     let html_body = grab_body(url.clone());
 
-    parse_to(html_body, url.clone())
-        .unwrap();
+    parse_to(html_body, url.clone()).unwrap();
 }
