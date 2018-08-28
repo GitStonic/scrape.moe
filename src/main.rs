@@ -9,9 +9,8 @@ extern crate serde_json;
 use regex::Regex;
 
 use select::document::Document;
-use select::predicate::{Name, Predicate};
+use select::predicate::{Name};
 
-use std::net::{TcpListener, TcpStream};
 use std::io::{stdin, Read, Write};
 use std::fs::{File, OpenOptions};
 
@@ -44,15 +43,18 @@ fn parse_to(document: String, url: String) -> Result<(), &'static str> {
 
     for node in new_document.find(Name("a")) {
         let mut page_link = String::new();
-        let mut link = node.attr("href").unwrap_or("Cannot grab a link...");
+        let mut link = node.attr("href")
+            .unwrap_or("LNK_N_FND");
 
-        if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
+        if link == "LNK_N_FND" {
+            append_to_report("Unable to fetch an link...\n".to_string());
+            continue
+        } else if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
             // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
             // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
             // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
 
             // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
-            println!("Neither http or https");
 
             let mut domain_name = String::new();
             let potential_name = Regex::new(r"//(?:[^./]+[.])*([^/.]+[.][^/.]+)/?").unwrap();
@@ -79,7 +81,42 @@ fn parse_to(document: String, url: String) -> Result<(), &'static str> {
     }
 
     for node in new_document.find(Name("img")) {
-        println!("Image link? {:?}", node.attr("src"));
+        let mut image_link = String::new();
+        let mut link = node.attr("src")
+            .unwrap_or("IMG_N_FND");
+
+        if link == "IMG_N_FND" {
+            append_to_report("Unable to fetch an image...\n".to_string());
+            continue
+        } else if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
+            // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
+            // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
+            // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
+
+            // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
+
+            let mut domain_name = String::new();
+            let potential_name = Regex::new(r"//(?:[^./]+[.])*([^/.]+[.][^/.]+)/?").unwrap();
+
+            match potential_name.captures(url.as_str()) {
+                Some(domain) => {
+                    let temp = domain.get(0).unwrap();
+
+                    let text = temp.as_str();
+
+                    domain_name.push_str(text.replace("/", "").as_str());
+                },
+                None => println!("No matches we're available")
+            }
+
+            let new_link = format!("https://{}/{}", domain_name, link);
+
+            image_link.push_str(new_link.as_str());
+        } else {
+            image_link.push_str(link)
+        }
+
+        page_images.push(String::from(image_link));
     }
 
     let data = AppendData {
@@ -88,7 +125,8 @@ fn parse_to(document: String, url: String) -> Result<(), &'static str> {
     };
 
     write_to_file(data);
-    Ok(println!("PARSE: Pass..."))
+
+    Ok(println!("Wrote to file 'temp/data.json' check there for results..."))
 }
 
 fn grab_file() -> serde_json::Result<EndFile> {
@@ -102,34 +140,34 @@ fn grab_file() -> serde_json::Result<EndFile> {
     Ok(end_file)
 }
 
+fn append_to_report(txt: String) {
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open("temp/report.txt")
+        .expect("Cannot open the 'report' file...");
+    
+    file.write_all(txt.as_bytes())
+        .expect("Unable to append new data to 'report' file...");
+}
+
 fn write_to_file(data: AppendData) {
     let mut file = grab_file().unwrap();
 
     for link in data.new_links {
-        if file.links.is_empty() != true {
-            for check_link in file.links.clone() {
-                if check_link == link {
-                    println!("{} is already inserted", check_link);
-                } else {
-                    println!("Do something else... it's not inserted");
-                }
-            } 
+        if file.links.contains(&link) {
+            let report = format!("Link '{}' is already inserted in the 'data.json' file...\n", link);
+            append_to_report(report); 
+            continue 
         };
-
         file.links.push(link)
     }
 
     for image in data.new_images {
-        if file.images.is_empty() != true {
-            for check_image in file.images.clone() {
-                if check_image == image {
-                    println!("{} is already inserted", check_image);
-                } else {
-                    println!("Do something else... it's not inserted");
-                }
-            }
-        }
-
+        if file.images.contains(&image) {
+            let report = format!("Image '{}' is already inserted in the 'data.json' file...\n", image);
+            append_to_report(report);  
+            continue 
+        };
         file.images.push(image)
     }
 

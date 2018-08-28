@@ -11,3 +11,4 @@ Cargo.lock
 
 # Testing
 temp/data.json
+temp/report.txt
