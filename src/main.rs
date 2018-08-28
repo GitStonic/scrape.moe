@@ -72,13 +72,14 @@ fn parse_to(document: String, url: String) -> Result<(), &'static str> {
 
             page_link.push_str(new_link.as_str());
         } else {
-            println!("This link is good...");
             page_link.push_str(link)
         }
 
-        println!("End result {}", page_link);
-
         page_links.push(String::from(page_link));
+    }
+
+    for node in new_document.find(Name("img")) {
+        println!("Image link? {:?}", node.attr("src"));
     }
 
     let data = AppendData {
@@ -96,7 +97,6 @@ fn grab_file() -> serde_json::Result<EndFile> {
     let mut file = File::open("temp/data.json").unwrap();
     file.read_to_string(&mut data).unwrap();
     
-
     let end_file: EndFile = serde_json::from_str(&data)?;
 
     Ok(end_file)
@@ -106,10 +106,30 @@ fn write_to_file(data: AppendData) {
     let mut file = grab_file().unwrap();
 
     for link in data.new_links {
+        if file.links.is_empty() != true {
+            for check_link in file.links.clone() {
+                if check_link == link {
+                    println!("{} is already inserted", check_link);
+                } else {
+                    println!("Do something else... it's not inserted");
+                }
+            } 
+        };
+
         file.links.push(link)
     }
 
     for image in data.new_images {
+        if file.images.is_empty() != true {
+            for check_image in file.images.clone() {
+                if check_image == image {
+                    println!("{} is already inserted", check_image);
+                } else {
+                    println!("Do something else... it's not inserted");
+                }
+            }
+        }
+
         file.images.push(image)
     }
 
