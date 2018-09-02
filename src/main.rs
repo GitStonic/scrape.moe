@@ -1,186 +1,19 @@
 #[macro_use] extern crate serde_derive;
 
+extern crate rand;
 extern crate serde;
 extern crate regex;
 extern crate select;
+extern crate chrono;
 extern crate reqwest;
 extern crate serde_json;
 
-use regex::Regex;
+use std::io::{stdin};
 
-use select::document::Document;
-use select::predicate::{Name};
+mod reporter;
+mod data_manager;
 
-use std::io::{stdin, Read, Write};
-use std::fs::{File, OpenOptions};
-
-#[derive(Debug, Serialize, Deserialize)]
-struct EndFile {
-    images: Vec<String>,
-    links: Vec<String>
-}
-
-struct AppendData {
-    new_images: Vec<String>,
-    new_links: Vec<String>
-}
-
-fn grab_body(url: String) -> String {
-    let mut body = String::new();
-
-    reqwest::get(url.as_str())
-        .unwrap()
-        .read_to_string(&mut body)
-        .unwrap();
-    
-    body
-}
-
-fn parse_to(document: String, url: String) -> Result<(), &'static str> {
-    let mut page_links: Vec<String> = Vec::new();
-    let mut page_images: Vec<String> = Vec::new();
-    let new_document = Document::from(document.as_str());
-
-    for node in new_document.find(Name("a")) {
-        let mut page_link = String::new();
-        let mut link = node.attr("href")
-            .unwrap_or("LNK_N_FND");
-
-        if link == "LNK_N_FND" {
-            append_to_report("Unable to fetch an link...\n".to_string());
-            continue
-        } else if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
-            // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
-            // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
-            // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
-
-            // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
-
-            let mut domain_name = String::new();
-            let potential_name = Regex::new(r"//(?:[^./]+[.])*([^/.]+[.][^/.]+)/?").unwrap();
-
-            match potential_name.captures(url.as_str()) {
-                Some(domain) => {
-                    let temp = domain.get(0).unwrap();
-
-                    let text = temp.as_str();
-
-                    domain_name.push_str(text.replace("/", "").as_str());
-                },
-                None => println!("No matches we're available")
-            }
-
-            let new_link = format!("https://{}/{}", domain_name, link);
-
-            page_link.push_str(new_link.as_str());
-        } else {
-            page_link.push_str(link)
-        }
-
-        page_links.push(String::from(page_link));
-    }
-
-    for node in new_document.find(Name("img")) {
-        let mut image_link = String::new();
-        let mut link = node.attr("src")
-            .unwrap_or("IMG_N_FND");
-
-        if link == "IMG_N_FND" {
-            append_to_report("Unable to fetch an image...\n".to_string());
-            continue
-        } else if (link.starts_with("http://") != true) && (link.starts_with("https://") != true) {
-            // Just going to assume if the HTTP prefixes are missing it must be a backend proxy...
-            // Basically if the original link was like http://example.com/some/file but instead they give me /some/file...
-            // We can assume that `/some/file` is paramters towards the original link/url... hence we add the missing parts to the paramaters...
-
-            // I'm just going to use https:// in this case because most websites support it already... might make a function that supports http:// soon...
-
-            let mut domain_name = String::new();
-            let potential_name = Regex::new(r"//(?:[^./]+[.])*([^/.]+[.][^/.]+)/?").unwrap();
-
-            match potential_name.captures(url.as_str()) {
-                Some(domain) => {
-                    let temp = domain.get(0).unwrap();
-
-                    let text = temp.as_str();
-
-                    domain_name.push_str(text.replace("/", "").as_str());
-                },
-                None => println!("No matches we're available")
-            }
-
-            let new_link = format!("https://{}/{}", domain_name, link);
-
-            image_link.push_str(new_link.as_str());
-        } else {
-            image_link.push_str(link)
-        }
-
-        page_images.push(String::from(image_link));
-    }
-
-    let data = AppendData {
-        new_images: page_images,
-        new_links: page_links
-    };
-
-    write_to_file(data);
-
-    Ok(println!("Wrote to file 'temp/data.json' check there for results..."))
-}
-
-fn grab_file() -> serde_json::Result<EndFile> {
-    let mut data = String::new();
-
-    let mut file = File::open("temp/data.json").unwrap();
-    file.read_to_string(&mut data).unwrap();
-    
-    let end_file: EndFile = serde_json::from_str(&data)?;
-
-    Ok(end_file)
-}
-
-fn append_to_report(txt: String) {
-    let mut file = OpenOptions::new()
-        .append(true)
-        .open("temp/report.txt")
-        .expect("Cannot open the 'report' file...");
-    
-    file.write_all(txt.as_bytes())
-        .expect("Unable to append new data to 'report' file...");
-}
-
-fn write_to_file(data: AppendData) {
-    let mut file = grab_file().unwrap();
-
-    for link in data.new_links {
-        if file.links.contains(&link) {
-            let report = format!("Link '{}' is already inserted in the 'data.json' file...\n", link);
-            append_to_report(report); 
-            continue 
-        };
-        file.links.push(link)
-    }
-
-    for image in data.new_images {
-        if file.images.contains(&image) {
-            let report = format!("Image '{}' is already inserted in the 'data.json' file...\n", image);
-            append_to_report(report);  
-            continue 
-        };
-        file.images.push(image)
-    }
-
-    let new_file = serde_json::to_string(&file)
-        .unwrap();
-
-    let mut f = OpenOptions::new()
-        .write(true)
-        .open("temp/data.json")
-        .unwrap();
-    
-    f.write_all(new_file.as_bytes()).unwrap();
-}
+use data_manager::{Data};
 
 fn main() {
     let mut url = String::new();
@@ -192,7 +25,16 @@ fn main() {
 
     println!("Grabbing data...");
 
-    let html_body = grab_body(url.clone());
+    let mut data_parser = Data {
+        original_link: url,
+        images: Vec::new(),
+        links: Vec::new(),
+        code: 0
+    };
 
-    parse_to(html_body, url.clone()).unwrap();
+    let body = data_parser.grab_body();
+    data_parser
+        .parse_to_self(body)
+        .write_to("out")
+        .expect("Cannot write...");
 }
